@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Handle, Position, type Node } from 'reactflow'
+import { Handle, Position, type NodeProps } from 'reactflow'
 import type { GitHubFile, FileStructure, CodeSymbol } from '../types.js'
 
 interface FileNodeData {
@@ -11,21 +11,53 @@ interface FileNodeData {
   allStructures?: Map<string, FileStructure>
 }
 
-const FileNode = memo(({ data }: Node<FileNodeData>) => {
-  const { label, structure, content, onSymbolClick, file, allStructures } = data
+const FileNode = memo(({ data }: NodeProps<FileNodeData>) => {
+  const { label, structure, onSymbolClick, file, allStructures } = data
 
   const handleSymbolClick = (symbol: CodeSymbol) => {
-    if (onSymbolClick && symbol.type === 'function') {
+    console.log('🎯 FileNode: Symbol clicked:', symbol.name, symbol.type)
+    console.log('🎯 FileNode: onSymbolClick exists?', !!onSymbolClick)
+    console.log('🎯 FileNode: Is clickable?', symbol.type === 'function' || symbol.type === 'class')
+    
+    // TEMPORARY: Make ALL symbols clickable for testing
+    if (onSymbolClick) {
+      console.log('🎯 FileNode: Calling onSymbolClick (TESTING MODE)')
       onSymbolClick(symbol, file)
+    } else {
+      console.log('🎯 FileNode: onSymbolClick is null/undefined')
     }
   }
 
-  const getFunctionUsages = (functionName: string) => {
+  const getSymbolUsages = (symbolName: string, symbolType: string) => {
     if (!allStructures) return []
     const usages = []
-    for (const [filePath, fileStructure] of allStructures) {
-      const calls = fileStructure.functionCalls.filter(call => call.functionName === functionName)
-      usages.push(...calls)
+    
+    for (const [, fileStructure] of allStructures) {
+      if (symbolType === 'function') {
+        // For functions, count function calls
+        const calls = fileStructure.functionCalls.filter(call => call.functionName === symbolName)
+        usages.push(...calls)
+      } else if (symbolType === 'class') {
+        // For classes, count instantiations and inheritance references
+        if (fileStructure.symbolReferences) {
+          const refs = fileStructure.symbolReferences.filter(ref => 
+            ref.symbolName === symbolName && 
+            ref.symbolType === 'class' &&
+            (ref.referenceType === 'instantiation' || ref.referenceType === 'inheritance')
+          )
+          usages.push(...refs)
+        }
+      } else if (symbolType === 'interface' || symbolType === 'type') {
+        // For interfaces and types, count type usage references
+        if (fileStructure.symbolReferences) {
+          const refs = fileStructure.symbolReferences.filter(ref => 
+            ref.symbolName === symbolName && 
+            (ref.symbolType === 'interface' || ref.symbolType === 'type') &&
+            ref.referenceType === 'usage'
+          )
+          usages.push(...refs)
+        }
+      }
     }
     return usages
   }
@@ -47,17 +79,23 @@ const FileNode = memo(({ data }: Node<FileNodeData>) => {
             <h4>Symbols ({structure.symbols.length})</h4>
             <div className="symbols-list">
               {structure.symbols.slice(0, 5).map((symbol, index) => {
-                const usages = symbol.type === 'function' ? getFunctionUsages(symbol.name) : []
+                const usages = getSymbolUsages(symbol.name, symbol.type)
+                const isClickable = true // TEMPORARY: Make all symbols clickable for testing
+                console.log('🔍 Rendering symbol:', symbol.name, symbol.type, 'clickable:', isClickable)
                 return (
                   <div
                     key={index}
-                    className={`symbol symbol-${symbol.type} ${symbol.type === 'function' ? 'clickable' : ''}`}
-                    onClick={() => handleSymbolClick(symbol)}
-                    title={symbol.type === 'function' ? `${usages.length} usage(s) found` : ''}
+                    className={`symbol symbol-${symbol.type} ${isClickable ? 'clickable' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      console.log('🎯 Click event fired on symbol:', symbol.name)
+                      handleSymbolClick(symbol)
+                    }}
+                    title={isClickable ? `${usages.length} usage(s) found` : ''}
                   >
                     <span className="symbol-type">{symbol.type}</span>
                     <span className="symbol-name">{symbol.name}</span>
-                    {symbol.type === 'function' && usages.length > 0 && (
+                    {isClickable && usages.length > 0 && (
                       <span className="usage-count">({usages.length})</span>
                     )}
                   </div>

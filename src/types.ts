@@ -31,6 +31,21 @@ export interface FunctionCall {
   callerFile: string
 }
 
+export interface SymbolReference {
+  symbolName: string
+  symbolType: 'function' | 'class' | 'variable' | 'interface' | 'type'
+  referencedInFile: string
+  line: number
+  column: number
+  referenceType: 'call' | 'instantiation' | 'usage' | 'inheritance'
+}
+
+export interface ConnectedNode {
+  file: GitHubFile
+  symbols: CodeSymbol[]
+  references: SymbolReference[]
+}
+
 export interface FileStructure {
   path: string
   language: string
@@ -38,6 +53,7 @@ export interface FileStructure {
   imports: string[]
   exports: string[]
   functionCalls: FunctionCall[]
+  symbolReferences: SymbolReference[]
 }
 
 export interface CanvasNode {

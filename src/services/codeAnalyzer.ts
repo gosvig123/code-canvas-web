@@ -1,4 +1,4 @@
-import type { CodeSymbol, FileStructure, FunctionCall } from '../types.js'
+import type { CodeSymbol, FileStructure, FunctionCall, SymbolReference } from '../types.js'
 
 export class CodeAnalyzer {
   private parser: any = null
@@ -11,7 +11,7 @@ export class CodeAnalyzer {
     this.Parser = TreeSitter.Parser
     this.Language = TreeSitter.Language
     await this.Parser.init({
-      locateFile(_scriptName: string, _scriptDirectory: string) {
+      locateFile() {
         return `/tree-sitter.wasm`
       }
     })
@@ -77,6 +77,7 @@ export class CodeAnalyzer {
     const imports = this.extractImports(tree.rootNode, content)
     const exports = this.extractExports(tree.rootNode, content)
     const functionCalls = this.extractFunctionCalls(tree.rootNode, content, filename)
+    const symbolReferences = this.extractSymbolReferences(tree.rootNode, content, filename)
 
     console.log(`Analysis complete for ${filename}: ${symbols.length} symbols found`)
     if (symbols.length > 0) {
@@ -89,7 +90,8 @@ export class CodeAnalyzer {
       symbols,
       imports,
       exports,
-      functionCalls
+      functionCalls,
+      symbolReferences
     }
   }
 
@@ -313,23 +315,29 @@ export class CodeAnalyzer {
         const functionNode = n.children[0]
         if (functionNode && functionNode.type === 'identifier') {
           const functionName = content.slice(functionNode.startIndex, functionNode.endIndex)
-          calls.push({
-            functionName,
-            line: n.startPosition.row + 1,
-            column: n.startPosition.column,
-            callerFile: filename
-          })
-        } else if (functionNode && functionNode.type === 'member_expression') {
-          // Handle method calls like obj.method()
-          const propertyNode = functionNode.children.find((child: any) => child.type === 'property_identifier')
-          if (propertyNode) {
-            const functionName = content.slice(propertyNode.startIndex, propertyNode.endIndex)
+          // Skip built-in functions and common methods that are not user-defined
+          if (!this.isBuiltInFunction(functionName)) {
             calls.push({
               functionName,
               line: n.startPosition.row + 1,
               column: n.startPosition.column,
               callerFile: filename
             })
+          }
+        } else if (functionNode && functionNode.type === 'member_expression') {
+          // Handle method calls like obj.method()
+          const propertyNode = functionNode.children.find((child: any) => child.type === 'property_identifier')
+          if (propertyNode) {
+            const functionName = content.slice(propertyNode.startIndex, propertyNode.endIndex)
+            // Only count method calls that might be user-defined functions
+            if (!this.isBuiltInMethod(functionName)) {
+              calls.push({
+                functionName,
+                line: n.startPosition.row + 1,
+                column: n.startPosition.column,
+                callerFile: filename
+              })
+            }
           }
         }
       }
@@ -343,5 +351,132 @@ export class CodeAnalyzer {
     
     traverse(node)
     return calls
+  }
+
+  private isBuiltInFunction(name: string): boolean {
+    const builtIns = new Set([
+      'console', 'require', 'import', 'export', 'setTimeout', 'setInterval',
+      'clearTimeout', 'clearInterval', 'parseInt', 'parseFloat', 'isNaN',
+      'isFinite', 'encodeURIComponent', 'decodeURIComponent', 'JSON',
+      'Object', 'Array', 'String', 'Number', 'Boolean', 'Date', 'RegExp',
+      'Math', 'Promise', 'Error', 'TypeError', 'ReferenceError'
+    ])
+    return builtIns.has(name)
+  }
+
+  private isBuiltInMethod(name: string): boolean {
+    const builtInMethods = new Set([
+      'push', 'pop', 'shift', 'unshift', 'slice', 'splice', 'concat',
+      'join', 'reverse', 'sort', 'indexOf', 'lastIndexOf', 'includes',
+      'find', 'findIndex', 'filter', 'map', 'reduce', 'reduceRight',
+      'forEach', 'some', 'every', 'toString', 'valueOf', 'hasOwnProperty',
+      'isPrototypeOf', 'propertyIsEnumerable', 'toLocaleString',
+      'charAt', 'charCodeAt', 'substring', 'substr', 'toLowerCase',
+      'toUpperCase', 'trim', 'split', 'replace', 'match', 'search',
+      'log', 'warn', 'error', 'info', 'debug', 'trace', 'assert',
+      'then', 'catch', 'finally', 'resolve', 'reject', 'all', 'race'
+    ])
+    return builtInMethods.has(name)
+  }
+
+  private extractSymbolReferences(node: any, content: string, filename: string): SymbolReference[] {
+    const references: SymbolReference[] = []
+    
+    const traverse = (n: any) => {
+      if (!n || !n.type) return
+      
+      // Track class instantiations (new ClassName())
+      if (n.type === 'new_expression') {
+        const classNode = n.children.find((child: any) => child.type === 'identifier')
+        if (classNode) {
+          const className = content.slice(classNode.startIndex, classNode.endIndex)
+          references.push({
+            symbolName: className,
+            symbolType: 'class',
+            referencedInFile: filename,
+            line: n.startPosition.row + 1,
+            column: n.startPosition.column,
+            referenceType: 'instantiation'
+          })
+        }
+      }
+      
+      // Track class inheritance
+      if (n.type === 'class_heritage') {
+        const superClassNode = n.children.find((child: any) => child.type === 'identifier')
+        if (superClassNode) {
+          const superClassName = content.slice(superClassNode.startIndex, superClassNode.endIndex)
+          references.push({
+            symbolName: superClassName,
+            symbolType: 'class',
+            referencedInFile: filename,
+            line: n.startPosition.row + 1,
+            column: n.startPosition.column,
+            referenceType: 'inheritance'
+          })
+        }
+      }
+      
+      // Track type references in TypeScript
+      if (n.type === 'type_identifier') {
+        const typeName = content.slice(n.startIndex, n.endIndex)
+        references.push({
+          symbolName: typeName,
+          symbolType: 'type',
+          referencedInFile: filename,
+          line: n.startPosition.row + 1,
+          column: n.startPosition.column,
+          referenceType: 'usage'
+        })
+      }
+      
+      // Track interface usage in type annotations
+      if (n.type === 'type_annotation' || n.type === 'type_arguments') {
+        const typeIdentifiers = this.findTypeIdentifiers(n, content)
+        typeIdentifiers.forEach(typeId => {
+          references.push({
+            symbolName: typeId.name,
+            symbolType: 'interface',
+            referencedInFile: filename,
+            line: typeId.line,
+            column: typeId.column,
+            referenceType: 'usage'
+          })
+        })
+      }
+      
+      if (n.children) {
+        for (const child of n.children) {
+          traverse(child)
+        }
+      }
+    }
+    
+    traverse(node)
+    return references
+  }
+
+  private findTypeIdentifiers(node: any, content: string): Array<{name: string, line: number, column: number}> {
+    const identifiers: Array<{name: string, line: number, column: number}> = []
+    
+    const traverse = (n: any) => {
+      if (n.type === 'type_identifier') {
+        const name = content.slice(n.startIndex, n.endIndex)
+        identifiers.push({
+          name,
+          line: n.startPosition.row + 1,
+          column: n.startPosition.column
+        })
+      }
+      
+      if (n.children) {
+        for (const child of n.children) {
+          traverse(child)
+        }
+      }
+    }
+    
+    traverse(node)
+    return identifiers
   }
 }

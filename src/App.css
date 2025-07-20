@@ -494,3 +494,102 @@
   background-color: #f8f9fa;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
+
+/* Enhanced Symbol Styles for Clickable Elements */
+.symbol.symbol-class.clickable {
+  border-left: 3px solid #28a745;
+}
+
+.symbol.symbol-function.clickable {
+  border-left: 3px solid #007bff;
+}
+
+.symbol.clickable:hover {
+  background-color: #e3f2fd;
+  transform: translateX(2px);
+}
+
+/* File Usage Group Styles */
+.file-usage-group {
+  margin-bottom: 1rem;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.usage-file-header {
+  background-color: #f8f9fa;
+  padding: 0.5rem 0.75rem;
+  font-family: monospace;
+  font-size: 0.8rem;
+  font-weight: bold;
+  color: #495057;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.usage-symbols {
+  padding: 0.5rem;
+}
+
+.usage-symbols .usage-item {
+  margin-bottom: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background-color: #ffffff;
+  border: 1px solid #e9ecef;
+}
+
+.usage-type {
+  background-color: #6f42c1;
+  color: white;
+  padding: 0.1rem 0.3rem;
+  border-radius: 2px;
+  font-size: 0.7rem;
+  margin-right: 0.5rem;
+  min-width: 60px;
+  text-align: center;
+  display: inline-block;
+}
+
+.usage-type[data-type="call"] {
+  background-color: #007bff;
+}
+
+.usage-type[data-type="instantiation"] {
+  background-color: #28a745;
+}
+
+.usage-type[data-type="inheritance"] {
+  background-color: #fd7e14;
+}
+
+.usage-type[data-type="usage"] {
+  background-color: #6c757d;
+}
+
+/* Caller Node Styles */
+.file-node[style*="border: 2px solid #ff6b6b"] {
+  animation: pulse-caller 2s ease-in-out;
+  box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+}
+
+.file-node[style*="background-color: #fff5f5"] .file-node-header {
+  background-color: #ffe6e6;
+  border-bottom-color: #ffcccc;
+}
+
+.file-node[style*="background-color: #fff5f5"] .file-name {
+  color: #d63384;
+  font-weight: bold;
+}
+
+@keyframes pulse-caller {
+  0% {
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+  }
+  50% {
+    box-shadow: 0 6px 20px rgba(255, 107, 107, 0.5);
+  }
+  100% {
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+  }
+}
