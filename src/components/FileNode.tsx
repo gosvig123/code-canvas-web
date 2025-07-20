@@ -33,14 +33,14 @@ const FileNode = memo(({ data }: Node<FileNodeData>) => {
   return (
     <div className="file-node">
       <Handle type="target" position={Position.Top} />
-      
+
       <div className="file-node-header">
         <div className="file-name">{label}</div>
         {structure && (
           <div className="file-language">{structure.language}</div>
         )}
       </div>
-      
+
       {structure && (
         <div className="file-node-content">
           <div className="symbols-section">
@@ -49,8 +49,8 @@ const FileNode = memo(({ data }: Node<FileNodeData>) => {
               {structure.symbols.slice(0, 5).map((symbol, index) => {
                 const usages = symbol.type === 'function' ? getFunctionUsages(symbol.name) : []
                 return (
-                  <div 
-                    key={index} 
+                  <div
+                    key={index}
                     className={`symbol symbol-${symbol.type} ${symbol.type === 'function' ? 'clickable' : ''}`}
                     onClick={() => handleSymbolClick(symbol)}
                     title={symbol.type === 'function' ? `${usages.length} usage(s) found` : ''}
@@ -70,34 +70,10 @@ const FileNode = memo(({ data }: Node<FileNodeData>) => {
               )}
             </div>
           </div>
-          
-          {structure.imports.length > 0 && (
-            <div className="imports-section">
-              <h4>Imports ({structure.imports.length})</h4>
-              <div className="imports-list">
-                {structure.imports.slice(0, 3).map((imp, index) => (
-                  <div key={index} className="import-item">
-                    {imp}
-                  </div>
-                ))}
-                {structure.imports.length > 3 && (
-                  <div className="import-more">
-                    +{structure.imports.length - 3} more...
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-          
-          {content && (
-            <div className="preview-section">
-              <h4>Preview</h4>
-              <pre className="code-preview">{content}</pre>
-            </div>
-          )}
+
         </div>
       )}
-      
+
       <Handle type="source" position={Position.Bottom} />
     </div>
   )

@@ -17,7 +17,7 @@ export interface GitHubFile {
 
 export interface CodeSymbol {
   name: string
-  type: 'function' | 'class' | 'variable' | 'import' | 'export'
+  type: 'function' | 'class' | 'variable' | 'import' | 'export' | 'interface' | 'type'
   line: number
   column: number
   endLine?: number

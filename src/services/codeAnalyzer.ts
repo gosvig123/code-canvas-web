@@ -11,7 +11,7 @@ export class CodeAnalyzer {
     this.Parser = TreeSitter.Parser
     this.Language = TreeSitter.Language
     await this.Parser.init({
-      locateFile(scriptName: string, scriptDirectory: string) {
+      locateFile(_scriptName: string, _scriptDirectory: string) {
         return `/tree-sitter.wasm`
       }
     })
@@ -78,6 +78,11 @@ export class CodeAnalyzer {
     const exports = this.extractExports(tree.rootNode, content)
     const functionCalls = this.extractFunctionCalls(tree.rootNode, content, filename)
 
+    console.log(`Analysis complete for ${filename}: ${symbols.length} symbols found`)
+    if (symbols.length > 0) {
+      console.log('Symbols:', symbols.map(s => `${s.type}:${s.name}`))
+    }
+
     return {
       path: filename,
       language,
@@ -92,10 +97,14 @@ export class CodeAnalyzer {
     const symbols: CodeSymbol[] = []
     
     const traverse = (n: any) => {
+      if (!n || !n.type) return
+      
       switch (n.type) {
         case 'function_declaration':
         case 'function_expression':
         case 'arrow_function':
+        case 'method_definition':
+        case 'function_signature':
           const funcName = this.extractFunctionName(n, content)
           if (funcName) {
             symbols.push({
@@ -124,6 +133,7 @@ export class CodeAnalyzer {
           break
         
         case 'variable_declaration':
+        case 'lexical_declaration':
           const varNames = this.extractVariableNames(n, content)
           varNames.forEach(name => {
             symbols.push({
@@ -134,10 +144,40 @@ export class CodeAnalyzer {
             })
           })
           break
+          
+        case 'interface_declaration':
+          const interfaceName = this.extractInterfaceName(n, content)
+          if (interfaceName) {
+            symbols.push({
+              name: interfaceName,
+              type: 'interface',
+              line: n.startPosition.row + 1,
+              column: n.startPosition.column,
+              endLine: n.endPosition.row + 1,
+              endColumn: n.endPosition.column
+            })
+          }
+          break
+          
+        case 'type_alias_declaration':
+          const typeName = this.extractTypeName(n, content)
+          if (typeName) {
+            symbols.push({
+              name: typeName,
+              type: 'type',
+              line: n.startPosition.row + 1,
+              column: n.startPosition.column,
+              endLine: n.endPosition.row + 1,
+              endColumn: n.endPosition.column
+            })
+          }
+          break
       }
 
-      for (const child of n.children) {
-        traverse(child)
+      if (n.children) {
+        for (const child of n.children) {
+          traverse(child)
+        }
       }
     }
 
@@ -150,15 +190,17 @@ export class CodeAnalyzer {
     
     const traverse = (n: any) => {
       if (n.type === 'import_statement') {
-        const source = n.children.find(child => child.type === 'string')
+        const source = n.children.find((child: any) => child.type === 'string')
         if (source) {
           const importPath = content.slice(source.startIndex + 1, source.endIndex - 1)
           imports.push(importPath)
         }
       }
       
-      for (const child of n.children) {
-        traverse(child)
+      if (n.children) {
+        for (const child of n.children) {
+          traverse(child)
+        }
       }
     }
     
@@ -178,8 +220,10 @@ export class CodeAnalyzer {
         }
       }
       
-      for (const child of n.children) {
-        traverse(child)
+      if (n.children) {
+        for (const child of n.children) {
+          traverse(child)
+        }
       }
     }
     
@@ -188,31 +232,77 @@ export class CodeAnalyzer {
   }
 
   private extractFunctionName(node: any, content: string): string | null {
-    const nameNode = node.children.find(child => child.type === 'identifier')
-    return nameNode ? content.slice(nameNode.startIndex, nameNode.endIndex) : null
+    // Handle different function types
+    if (node.type === 'function_declaration') {
+      const nameNode = node.children.find((child: any) => child.type === 'identifier')
+      return nameNode ? content.slice(nameNode.startIndex, nameNode.endIndex) : null
+    }
+    
+    if (node.type === 'method_definition') {
+      const nameNode = node.children.find((child: any) => child.type === 'property_identifier')
+      return nameNode ? content.slice(nameNode.startIndex, nameNode.endIndex) : null
+    }
+    
+    if (node.type === 'arrow_function' || node.type === 'function_expression') {
+      // For arrow functions, look for assignment pattern
+      let parent = node.parent
+      while (parent) {
+        if (parent.type === 'variable_declarator') {
+          const nameNode = parent.children.find((child: any) => child.type === 'identifier')
+          return nameNode ? content.slice(nameNode.startIndex, nameNode.endIndex) : null
+        }
+        if (parent.type === 'assignment_expression') {
+          const leftNode = parent.children[0]
+          if (leftNode && leftNode.type === 'identifier') {
+            return content.slice(leftNode.startIndex, leftNode.endIndex)
+          }
+        }
+        parent = parent.parent
+      }
+    }
+    
+    return null
   }
 
   private extractClassName(node: any, content: string): string | null {
-    const nameNode = node.children.find(child => child.type === 'identifier')
+    const nameNode = node.children.find((child: any) => child.type === 'identifier')
     return nameNode ? content.slice(nameNode.startIndex, nameNode.endIndex) : null
   }
 
   private extractVariableNames(node: any, content: string): string[] {
     const names: string[] = []
-    const declaratorList = node.children.find(child => child.type === 'variable_declarator')
-    if (declaratorList) {
-      const identifier = declaratorList.children.find(child => child.type === 'identifier')
-      if (identifier) {
-        names.push(content.slice(identifier.startIndex, identifier.endIndex))
+    
+    const traverse = (n: any) => {
+      if (n.type === 'variable_declarator') {
+        const identifier = n.children.find((child: any) => child.type === 'identifier')
+        if (identifier) {
+          names.push(content.slice(identifier.startIndex, identifier.endIndex))
+        }
+      }
+      
+      for (const child of n.children || []) {
+        traverse(child)
       }
     }
+    
+    traverse(node)
     return names
   }
 
   private extractExportName(node: any, content: string): string | null {
     // Simplified export name extraction
-    const identifier = node.children.find(child => child.type === 'identifier')
+    const identifier = node.children.find((child: any) => child.type === 'identifier')
     return identifier ? content.slice(identifier.startIndex, identifier.endIndex) : null
+  }
+
+  private extractInterfaceName(node: any, content: string): string | null {
+    const nameNode = node.children.find((child: any) => child.type === 'type_identifier')
+    return nameNode ? content.slice(nameNode.startIndex, nameNode.endIndex) : null
+  }
+
+  private extractTypeName(node: any, content: string): string | null {
+    const nameNode = node.children.find((child: any) => child.type === 'type_identifier')
+    return nameNode ? content.slice(nameNode.startIndex, nameNode.endIndex) : null
   }
 
   private extractFunctionCalls(node: any, content: string, filename: string): FunctionCall[] {
@@ -231,7 +321,7 @@ export class CodeAnalyzer {
           })
         } else if (functionNode && functionNode.type === 'member_expression') {
           // Handle method calls like obj.method()
-          const propertyNode = functionNode.children.find(child => child.type === 'property_identifier')
+          const propertyNode = functionNode.children.find((child: any) => child.type === 'property_identifier')
           if (propertyNode) {
             const functionName = content.slice(propertyNode.startIndex, propertyNode.endIndex)
             calls.push({
@@ -244,8 +334,10 @@ export class CodeAnalyzer {
         }
       }
       
-      for (const child of n.children) {
-        traverse(child)
+      if (n.children) {
+        for (const child of n.children) {
+          traverse(child)
+        }
       }
     }
     
