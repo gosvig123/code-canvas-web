@@ -42,7 +42,7 @@ function App() {
                 <h4>Selected Files ({selectedFiles.length})</h4>
                 {selectedFiles.map(file => (
                   <div key={file.path} className="selected-file">
-                    <span>{file.name}</span>
+                    <span className="file-name">{file.name || file.path}</span>
                     <button onClick={() => removeFile(file.path)}>×</button>
                   </div>
                 ))}
